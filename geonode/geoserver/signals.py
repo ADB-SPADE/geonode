@@ -223,19 +223,17 @@ def geoserver_post_save_local(instance, *args, **kwargs):
     instance.workspace = gs_resource.store.workspace.name
     instance.store = gs_resource.store.name
 
-    bbox = gs_resource.latlon_bbox
-
-    # FIXME(Ariel): Correct srid setting below
-    # self.srid = gs_resource.src
-
-    instance.srid_url = "http://www.spatialreference.org/ref/" + \
-        instance.srid.replace(':', '/').lower() + "/"
+    bbox = gs_resource.native_bbox
 
     # Set bounding box values
     instance.bbox_x0 = bbox[0]
     instance.bbox_x1 = bbox[1]
     instance.bbox_y0 = bbox[2]
     instance.bbox_y1 = bbox[3]
+    instance.srid = bbox[4]
+
+    instance.srid_url = "http://www.spatialreference.org/ref/" + \
+        instance.srid.replace(':', '/').lower() + "/"
 
     # Iterate over values from geoserver.
     for key in ['alternate', 'store', 'storeType']:
@@ -277,7 +275,8 @@ def geoserver_post_save_local(instance, *args, **kwargs):
         'bbox_x0': instance.bbox_x0,
         'bbox_x1': instance.bbox_x1,
         'bbox_y0': instance.bbox_y0,
-        'bbox_y1': instance.bbox_y1
+        'bbox_y1': instance.bbox_y1,
+        'srid': instance.srid
     }
 
     # Update ResourceBase
@@ -299,7 +298,7 @@ def geoserver_post_save_local(instance, *args, **kwargs):
     # store the resource to avoid another geoserver call in the post_save
     instance.gs_resource = gs_resource
 
-    bbox = gs_resource.latlon_bbox
+    bbox = gs_resource.native_bbox
     dx = float(bbox[1]) - float(bbox[0])
     dy = float(bbox[3]) - float(bbox[2])
 
