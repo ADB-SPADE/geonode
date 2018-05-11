@@ -39,6 +39,7 @@ from django.middleware.csrf import get_token
 from distutils.version import StrictVersion
 from django.utils.translation import ugettext as _
 from django.core.files.storage import default_storage as storage
+from django.core.files.storage import FileSystemStorage
 from geonode.base.models import Link
 from geonode.layers.models import Layer, LayerFile
 from geonode.utils import (resolve_object,
@@ -253,10 +254,21 @@ def download(request, resourceid, sender=Layer):
 
             # Copy all Layer related files into a temporary folder
             for l in layer_files:
-                if storage.exists(l.file):
-                    geonode_layer_path = storage.path(l.file)
-                    base_filename, original_ext = os.path.splitext(geonode_layer_path)
-                    shutil.copy2(geonode_layer_path, target_folder)
+                if isinstance(storage, FileSystemStorage):
+                    if storage.exists(l.file):
+                        geonode_layer_path = storage.path(l.file)
+                        base_filename, original_ext = os.path.splitext(geonode_layer_path)
+                        shutil.copy2(geonode_layer_path, target_folder)
+                else:
+                    try:
+                        if storage.local_storage.exists(l.file):
+                            geonode_layer_path = storage.local_storage.path(l.file)
+                            base_filename, original_ext = os.path.splitext(geonode_layer_path)
+                            shutil.copy2(geonode_layer_path, target_folder)
+                    except:
+                        traceback.print_exc()
+                        tb = traceback.format_exc()
+                        logger.debug(tb)
 
             # Let's check for associated SLD files (if any)
             try:
