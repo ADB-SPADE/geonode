@@ -66,6 +66,7 @@ from .files import get_scan_hint
 from .files import scan_file
 from .utils import (
     _SUPPORTED_CRS,
+    _ALLOW_TIME_STEP,
     _ASYNC_UPLOAD,
     _geoserver_down_error_msg,
     _get_time_dimensions,
@@ -407,8 +408,11 @@ def check_step_view(request, upload_session):
                 (has_time_dim, layer_values) = \
                     layer_eligible_for_time_dimension(request,
                                                       import_session.tasks[0].layer, upload_session=upload_session)
-                if has_time_dim:
-                    upload_session.completed_step = 'check'
+                # if _ALLOW_TIME_STEP is False, step 'time' is removed from the available 
+                # list of steps in utils.py, which results in issues uploading a layer
+                # which would be eligible for time
+                if has_time_dim or _ALLOW_TIME_STEP is False:
+                    upload_session.completed_step = 'check'                
                 else:
                     # This command skip completely 'time' configuration
                     upload_session.completed_step = 'time'
