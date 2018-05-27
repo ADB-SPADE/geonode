@@ -462,7 +462,7 @@ def map_embed_widget(request, mapid,
     else:
         map_bbox = llbbox_to_mercator([float(coord) for coord in map_bbox])
 
-    if map_bbox is not None:
+    if map_bbox and len(map_bbox) >= 4:
         minx, miny, maxx, maxy = [float(coord) for coord in map_bbox]
         x = (minx + maxx) / 2
         y = (miny + maxy) / 2
@@ -827,10 +827,6 @@ def add_layers_to_map_config(
             # bad layer, skip
             continue
 
-        if not layer.is_published:
-            # invisible layer, skip inclusion
-            continue
-
         if not request.user.has_perm(
                 'view_resourcebase',
                 obj=layer.get_self_resource()):
@@ -1022,7 +1018,7 @@ def add_layers_to_map_config(
 
         layers.append(maplayer)
 
-    if bbox is not None:
+    if bbox and len(bbox) >= 4:
         minx, maxx, miny, maxy = [float(coord) for coord in bbox]
         x = (minx + maxx) / 2
         y = (miny + maxy) / 2
