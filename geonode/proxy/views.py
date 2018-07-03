@@ -83,7 +83,7 @@ def proxy(request, url=None, response_callback=None,
         locator += '#' + url.fragment
 
     access_token = None
-    if 'access_token' in request.session:
+    if request and 'access_token' in request.session:
         access_token = request.session['access_token']
 
     # White-Black Listing Hosts
@@ -157,8 +157,8 @@ def proxy(request, url=None, response_callback=None,
         headers["Content-Type"] = request.META["CONTENT_TYPE"]
 
     access_token = None
-    if 'access_token' in request.session:
-        access_token = request.session['access_token']    #
+    if request and 'access_token' in request.session:
+        access_token = request.session['access_token']
 
     if access_token:
         # TODO: Bearer is currently cutted of by Djano / GeoServer

@@ -574,14 +574,14 @@ def layer_detail(request, layername, template='layers/layer_detail.html'):
         # "online": (layer.remote_service.probe == 200) if layer.storeType == "remoteStore" else True
     }
 
-    if 'access_token' in request.session:
+    if request and 'access_token' in request.session:
         access_token = request.session['access_token']
     else:
         u = uuid.uuid1()
         access_token = u.hex
 
     context_dict["viewer"] = json.dumps(map_obj.viewer_json(
-        request.user, access_token, * (NON_WMS_BASE_LAYERS + [maplayer])))
+        request, * (NON_WMS_BASE_LAYERS + [maplayer])))
     context_dict["preview"] = getattr(
         settings,
         'GEONODE_CLIENT_LAYER_PREVIEW_LIBRARY',
@@ -1104,14 +1104,8 @@ def layer_metadata(
         author_form = ProfileForm(prefix="author")
         author_form.hidden = False
 
-    if 'access_token' in request.session:
-        access_token = request.session['access_token']
-    else:
-        u = uuid.uuid1()
-        access_token = u.hex
-
     viewer = json.dumps(map_obj.viewer_json(
-        request.user, access_token, * (NON_WMS_BASE_LAYERS + [maplayer])))
+        request, * (NON_WMS_BASE_LAYERS + [maplayer])))
 
     metadataxsl = False
     if "geonode.contrib.metadataxsl" in settings.INSTALLED_APPS:
@@ -1124,10 +1118,10 @@ def layer_metadata(
         try:
             all_metadata_author_groups = chain(
                 request.user.group_list_all().distinct(),
-                GroupProfile.objects.exclude(access="private").exclude(access="public-invite"))
+                GroupProfile.objects.exclude(access="private"))
         except BaseException:
             all_metadata_author_groups = GroupProfile.objects.exclude(
-                access="private").exclude(access="public-invite")
+                access="private")
         [metadata_author_groups.append(item) for item in all_metadata_author_groups
             if item not in metadata_author_groups]
 
@@ -1454,10 +1448,11 @@ def layer_metadata_detail(
             group = GroupProfile.objects.get(slug=layer.group.name)
         except GroupProfile.DoesNotExist:
             group = None
+    site_url = settings.SITEURL.rstrip('/') if settings.SITEURL.startswith('http') else settings.SITEURL
     return render(request, template, context={
         "resource": layer,
         "group": group,
-        'SITEURL': settings.SITEURL[:-1]
+        'SITEURL': site_url
     })
 
 
@@ -1470,10 +1465,11 @@ def layer_metadata_upload(
         layername,
         'base.change_resourcebase',
         _PERMISSION_MSG_METADATA)
+    site_url = settings.SITEURL.rstrip('/') if settings.SITEURL.startswith('http') else settings.SITEURL
     return render(request, template, context={
         "resource": layer,
         "layer": layer,
-        'SITEURL': settings.SITEURL[:-1]
+        'SITEURL': site_url
     })
 
 
@@ -1486,10 +1482,11 @@ def layer_sld_upload(
         layername,
         'base.change_resourcebase',
         _PERMISSION_MSG_METADATA)
+    site_url = settings.SITEURL.rstrip('/') if settings.SITEURL.startswith('http') else settings.SITEURL
     return render(request, template, context={
         "resource": layer,
         "layer": layer,
-        'SITEURL': settings.SITEURL[:-1]
+        'SITEURL': site_url
     })
 
 

@@ -25,7 +25,7 @@ import re
 import sys
 from datetime import timedelta
 from distutils.util import strtobool
-from urlparse import urlparse, urlunparse
+from urlparse import urlparse, urlunparse, urljoin
 
 import django
 import dj_database_url
@@ -418,7 +418,7 @@ UNOCONV_ENABLE = strtobool(os.getenv('UNOCONV_ENABLE', 'False'))
 
 if UNOCONV_ENABLE:
     UNOCONV_EXECUTABLE = os.getenv('UNOCONV_EXECUTABLE', '/usr/bin/unoconv')
-    UNOCONV_TIMEOUT = os.getenv('UNOCONV_TIMEOUT', 30)  # seconds
+    UNOCONV_TIMEOUT = int(os.getenv('UNOCONV_TIMEOUT', 30))  # seconds
 
 LOGGING = {
     'version': 1,
@@ -697,7 +697,7 @@ GEOSERVER_LOCATION = os.getenv(
 )
 
 GEOSERVER_PUBLIC_LOCATION = os.getenv(
-    #  'GEOSERVER_PUBLIC_LOCATION', '{}geoserver/'.format(SITEURL)
+    #  'GEOSERVER_PUBLIC_LOCATION', urljoin(SITEURL, '/geoserver')
     'GEOSERVER_PUBLIC_LOCATION', GEOSERVER_LOCATION
 )
 
@@ -737,10 +737,10 @@ OGC_SERVER = {
         % os.path.abspath(os.path.join(PROJECT_ROOT, os.pardir)),
         # Set to name of database in DATABASES dictionary to enable
         # 'datastore',
-        'DATASTORE': '',
+        'DATASTORE': os.getenv('DEFAULT_BACKEND_DATASTORE',''),
         'PG_GEOGIG': False,
         # 'CACHE': ".cache"  # local cache file to for HTTP requests
-        'TIMEOUT': 10  # number of seconds to allow for HTTP requests
+        'TIMEOUT': int(os.getenv('OGC_REQUEST_TIMEOUT', '10'))  # number of seconds to allow for HTTP requests
     }
 }
 
@@ -749,12 +749,12 @@ USE_GEOSERVER = 'geonode.geoserver' in INSTALLED_APPS and OGC_SERVER['default'][
 # Uploader Settings
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100000
 UPLOADER = {
-    'BACKEND': 'geonode.rest',
+    'BACKEND': os.getenv('DEFAULT_BACKEND_UPLOADER', 'geonode.rest'),
     # 'BACKEND': 'geonode.importer',
     'OPTIONS': {
-        'TIME_ENABLED': False,
-        'MOSAIC_ENABLED': False,
-        'GEOGIG_ENABLED': False,
+        'TIME_ENABLED': strtobool(os.getenv('TIME_ENABLED', 'False')),
+        'MOSAIC_ENABLED': strtobool(os.getenv('MOSAIC_ENABLED', 'False')),
+        'GEOGIG_ENABLED': strtobool(os.getenv('GEOGIG_ENABLED', 'False')),
     },
     'SUPPORTED_CRS': [
         'EPSG:4326',
@@ -792,7 +792,7 @@ CATALOGUE = {
         # 'ENGINE': 'geonode.catalogue.backends.generic',
 
         # The FULLY QUALIFIED base url to the CSW instance for this GeoNode
-        'URL': '%scatalogue/csw' % SITEURL,
+        'URL': urljoin(SITEURL, '/catalogue/csw'),
         # 'URL': 'http://localhost:8080/geonetwork/srv/en/csw',
         # 'URL': 'http://localhost:8080/deegree-csw-demo-3.0.4/services',
 
@@ -1276,8 +1276,8 @@ CELERY_TASK_IGNORE_RESULT = True
 
 # I use these to debug kombu crashes; we get a more informative message.
 CELERY_TASK_SERIALIZER = 'json'
-#CELERY_RESULT_SERIALIZER = 'json'
-CELERY_ACCEPT_CONTENT = ['json', 'pickle']
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_ACCEPT_CONTENT = ['json']
 
 # Set Tasks Queues
 # CELERY_TASK_DEFAULT_QUEUE = "default"
@@ -1295,9 +1295,17 @@ CELERY_TASK_QUEUES = (
     Queue('email', GEONODE_EXCHANGE, routing_key='email'),
 )
 
-if USE_GEOSERVER and ASYNC_SIGNALS:
-    from geonode.messaging.queues import QUEUES
-    CELERY_TASK_QUEUES += QUEUES
+if USE_GEOSERVER:
+    CELERY_TASK_QUEUES += (
+        Queue("broadcast", GEOSERVER_EXCHANGE, routing_key="#"),
+        Queue("email.events", GEOSERVER_EXCHANGE, routing_key="email"),
+        Queue("all.geoserver", GEOSERVER_EXCHANGE, routing_key="geoserver.#"),
+        Queue("geoserver.catalog", GEOSERVER_EXCHANGE, routing_key="geoserver.catalog"),
+        Queue("geoserver.data", GEOSERVER_EXCHANGE, routing_key="geoserver.catalog"),
+        Queue("geoserver.events", GEOSERVER_EXCHANGE, routing_key="geonode.geoserver"),
+        Queue("notifications.events", GEOSERVER_EXCHANGE, routing_key="notifications"),
+        Queue("geonode.layer.viewer", GEOSERVER_EXCHANGE, routing_key="geonode.viewer"),
+    )
 
 # CELERYBEAT_SCHEDULE = {
 #     ...
@@ -1441,7 +1449,7 @@ RISKS = {'DEFAULT_LOCATION': None,
 ADMIN_MODERATE_UPLOADS = False
 
 # add following lines to your local settings to enable monitoring
-MONITORING_ENABLED = ast.literal_eval(os.environ.get('MONITORING_ENABLED', 'True'))
+MONITORING_ENABLED = ast.literal_eval(os.environ.get('MONITORING_ENABLED', 'False'))
 MONITORING_HOST_NAME = os.getenv("MONITORING_HOST_NAME", HOSTNAME)
 MONITORING_SERVICE_NAME = 'geonode'
 

@@ -199,7 +199,10 @@ def bbox_to_projection(native_bbox, target_srid=4326):
     box = native_bbox[:4]
     proj = native_bbox[-1]
     minx, maxx, miny, maxy = [float(a) for a in box]
-    source_srid = int(proj.split(":")[1])
+    try:
+        source_srid = int(proj.split(":")[1]) if proj and ':' in proj else int(proj)
+    except BaseException:
+        source_srid = target_srid
 
     def _v(coord, x, source_srid=4326, target_srid=3857):
         if source_srid == 4326 and target_srid != 4326:
@@ -334,7 +337,7 @@ def layer_from_viewer_config(map_id, model, layer, source, ordering):
 
 class GXPMapBase(object):
 
-    def viewer_json(self, user, access_token, *added_layers):
+    def viewer_json(self, request, *added_layers):
         """
         Convert this map to a nested dictionary structure matching the JSON
         configuration for GXP Viewers.
@@ -344,6 +347,10 @@ class GXPMapBase(object):
         configuration. These are not persisted; if you want to add layers you
         should use ``.layer_set.create()``.
         """
+
+        user = request.user if request else None
+        access_token = request.session['access_token'] if request and \
+            'access_token' in request.session else uuid.uuid1().hex
 
         if self.id and len(added_layers) == 0:
             cfg = cache.get("viewer_json_" +
@@ -475,6 +482,9 @@ class GXPMapBase(object):
                       "_" +
                       str(0 if user is None else user.id), config)
 
+        # Client conversion if needed
+        from geonode.client.hooks import hookset
+        config = hookset.viewer_json(config, context={'request': request})
         return config
 
 
@@ -624,18 +634,9 @@ def default_map_config(request):
         _baselayer(
             lyr, idx) for idx, lyr in enumerate(
             settings.MAP_BASELAYERS)]
-    user = None
-    access_token = None
-    if request:
-        user = request.user
-        if 'access_token' in request.session:
-            access_token = request.session['access_token']
-        else:
-            u = uuid.uuid1()
-            access_token = u.hex
 
     DEFAULT_MAP_CONFIG = _default_map.viewer_json(
-        user, access_token, *DEFAULT_BASE_LAYERS)
+        request, *DEFAULT_BASE_LAYERS)
 
     return DEFAULT_MAP_CONFIG, DEFAULT_BASE_LAYERS
 
@@ -927,7 +928,10 @@ def check_shp_columnnames(layer):
         inShapefile = unzip_file(inShapefile, '.shp', tempdir=tempdir)
 
     inDriver = ogr.GetDriverByName('ESRI Shapefile')
-    inDataSource = inDriver.Open(inShapefile, 1)
+    try:
+        inDataSource = inDriver.Open(inShapefile, 1)
+    except BaseException:
+        inDataSource = None
     if inDataSource is None:
         logger.warning('Could not open %s' % (inShapefile))
         return False, None, None

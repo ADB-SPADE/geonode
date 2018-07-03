@@ -15,8 +15,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
 from django.http import HttpResponse, HttpResponseNotAllowed
-from django.shortcuts import render_to_response, get_object_or_404
-from django.template import RequestContext
+from django.shortcuts import render, get_object_or_404
 from django.utils.translation import ugettext as _
 from django.views.decorators.csrf import csrf_exempt
 
@@ -219,29 +218,24 @@ def map_view_wm(request, mapid, snapshot=None, layer_name=None, template='wm_ext
         'base.view_resourcebase',
         _PERMISSION_MSG_VIEW)
 
-    if 'access_token' in request.session:
-        access_token = request.session['access_token']
-    else:
-        access_token = None
-
     if snapshot is None:
-        config = map_obj.viewer_json(request.user, access_token)
+        config = map_obj.viewer_json(request)
     else:
-        config = snapshot_config(snapshot, map_obj, request.user, access_token)
+        config = snapshot_config(snapshot, map_obj, request)
 
     if layer_name:
         config = add_layers_to_map_config(request, map_obj, (layer_name, ), False)
 
     config = gxp2wm(config, map_obj)
 
-    return render_to_response(template, RequestContext(request, {
+    return render(request, template, {
         'config': json.dumps(config),
         'map': map_obj,
         'preview': getattr(
             settings,
             'LAYER_PREVIEW_LIBRARY',
             '')
-    }))
+    })
 
 
 def map_view_js(request, mapid):
@@ -250,12 +244,8 @@ def map_view_js(request, mapid):
         mapid,
         'base.view_resourcebase',
         _PERMISSION_MSG_VIEW)
-    if 'access_token' in request.session:
-        access_token = request.session['access_token']
-    else:
-        access_token = None
 
-    config = map_obj.viewer_json(request.user, access_token)
+    config = map_obj.viewer_json(request)
     return HttpResponse(
         json.dumps(config),
         content_type="application/javascript")
@@ -279,16 +269,10 @@ def map_json_wm(request, mapid, snapshot=None):
             mapid,
             'base.view_resourcebase',
             _PERMISSION_MSG_VIEW)
-        if 'access_token' in request.session:
-            access_token = request.session['access_token']
-        else:
-            access_token = None
 
         return HttpResponse(
             json.dumps(
-                map_obj.viewer_json(
-                    request.user,
-                    access_token)))
+                map_obj.viewer_json(request)))
     elif request.method == 'PUT':
         if not request.user.is_authenticated():
             return HttpResponse(
@@ -307,7 +291,7 @@ def map_json_wm(request, mapid, snapshot=None):
                 content_type="text/plain"
             )
         try:
-            map_obj.update_from_viewer(request.body)
+            map_obj.update_from_viewer(request.body, context={'request': request, 'mapId': mapid, 'map': map_obj})
             update_ext_map(request, map_obj)
             MapSnapshot.objects.create(
                 config=clean_config(
@@ -315,16 +299,9 @@ def map_json_wm(request, mapid, snapshot=None):
                 map=map_obj,
                 user=request.user)
 
-            if 'access_token' in request.session:
-                access_token = request.session['access_token']
-            else:
-                access_token = None
-
             return HttpResponse(
                 json.dumps(
-                    map_obj.viewer_json(
-                        request.user,
-                        access_token)))
+                    map_obj.viewer_json(request)))
         except ValueError as e:
             return HttpResponse(
                 "The server could not understand the request." + str(e),
@@ -347,9 +324,7 @@ def new_map_wm(request, template='wm_extra/maps/map_new.html'):
     if isinstance(config, HttpResponse):
         return config
     else:
-        return render_to_response(
-            template, RequestContext(
-                request, context_dict))
+        return render(request, template, context_dict)
 
 
 def new_map_json_wm(request):
@@ -382,7 +357,8 @@ def new_map_json_wm(request):
             body = ''
 
         try:
-            map_obj.update_from_viewer(body)
+            map_obj.update_from_viewer(body, context={'request': request, 'mapId': map_obj.id, 'map': map_obj})
+
             update_ext_map(request, map_obj)
             MapSnapshot.objects.create(
                 config=clean_config(body),
@@ -411,11 +387,6 @@ def new_map_config(request):
     '''
     DEFAULT_MAP_CONFIG, DEFAULT_BASE_LAYERS = default_map_config(request)
 
-    if 'access_token' in request.session:
-        access_token = request.session['access_token']
-    else:
-        access_token = None
-
     if request.method == 'GET' and 'copy' in request.GET:
         mapid = request.GET['copy']
         map_obj = _resolve_map(request, mapid, 'base.view_resourcebase')
@@ -425,7 +396,7 @@ def new_map_config(request):
         if request.user.is_authenticated():
             map_obj.owner = request.user
 
-        config = map_obj.viewer_json(request.user, access_token)
+        config = map_obj.viewer_json(request)
         del config['id']
     else:
         if request.method == 'GET':
@@ -446,13 +417,7 @@ def new_map_config(request):
 
 def add_layers_to_map_config(request, map_obj, layer_names, add_base_layers=True):
     DEFAULT_MAP_CONFIG, DEFAULT_BASE_LAYERS = default_map_config(request)
-    if 'access_token' in request.session:
-        access_token = request.session['access_token']
-    else:
-        access_token = None
-
     bbox = None
-
     layers = []
     for layer_name in layer_names:
         try:
@@ -505,8 +470,9 @@ def add_layers_to_map_config(request, map_obj, layer_names, add_base_layers=True
                 ogc_server_settings.PUBLIC_LOCATION).netloc
             service_url = urlparse.urlsplit(service.base_url).netloc
 
+            access_token = request.session['access_token'] if request and 'access_token' in request.session else None
             if access_token and ogc_server_url == service_url and 'access_token' not in service.base_url:
-                url = service.base_url+'?access_token='+access_token
+                url = service.base_url + '?access_token=' + access_token
             else:
                 url = service.base_url
             maplayer = MapLayer(map=map_obj,
@@ -580,8 +546,7 @@ def add_layers_to_map_config(request, map_obj, layer_names, add_base_layers=True
         layers_to_add = DEFAULT_BASE_LAYERS + layers
     else:
         layers_to_add = layers
-    config = map_obj.viewer_json(
-        request.user, access_token, *layers_to_add)
+    config = map_obj.viewer_json(request, *layers_to_add)
 
     config['fromLayer'] = True
 
@@ -604,15 +569,10 @@ def map_detail_wm(request, mapid, snapshot=None, template='wm_extra/maps/map_det
             id=map_obj.id).update(
             popular_count=F('popular_count') + 1)
 
-    if 'access_token' in request.session:
-        access_token = request.session['access_token']
-    else:
-        access_token = None
-
     if snapshot is None:
-        config = map_obj.viewer_json(request.user, access_token)
+        config = map_obj.viewer_json(request)
     else:
-        config = snapshot_config(snapshot, map_obj, request.user, access_token)
+        config = snapshot_config(snapshot, map_obj, request)
 
     config = json.dumps(config)
     layers = MapLayer.objects.filter(map=map_obj.id)
@@ -642,7 +602,7 @@ def map_detail_wm(request, mapid, snapshot=None, template='wm_extra/maps/map_det
     if settings.SOCIAL_ORIGINS:
         context_dict["social_links"] = build_social_links(request, map_obj)
 
-    return render_to_response(template, RequestContext(request, context_dict))
+    return render(request, template, context_dict)
 
 
 def uniqifydict(seq, item):
@@ -820,7 +780,7 @@ def get_layer_attributes(layer):
     return attribute_fields
 
 
-def snapshot_config(snapshot, map_obj, user, access_token):
+def snapshot_config(snapshot, map_obj, request):
     """
     Get the snapshot map configuration - look up WMS parameters (bunding box)
     for local GeoNode layers
@@ -929,7 +889,8 @@ def snapshot_config(snapshot, map_obj, user, access_token):
 
     # Set up the proper layer configuration
     # def snaplayer_config(layer, sources, user):
-    def snaplayer_config(layer, sources, user, access_token):
+    def snaplayer_config(layer, sources, request):
+        user = request.user if request else None
         cfg = layer_config(layer, user)
         src_cfg = source_config(layer)
         source = snapsource_lookup(src_cfg, sources)
@@ -966,17 +927,16 @@ def snapshot_config(snapshot, map_obj, user, access_token):
             snaplayer_config(
                 l,
                 sources,
-                user,
-                access_token) for l in maplayers]
+                request) for l in maplayers]
     else:
-        config = map_obj.viewer_json(user, access_token)
+        config = map_obj.viewer_json(request)
 
     return config
 
 
 def printmap(request, mapid=None, snapshot=None):
 
-    return render_to_response('wm_extra/maps/map_print.html', RequestContext(request, {}))
+    return render(request, 'wm_extra/maps/map_print.html', {})
 
 
 @login_required
@@ -990,22 +950,24 @@ def add_endpoint(request):
             endpoint = endpoint_form.save(commit=False)
             endpoint.owner = request.user
             endpoint.save()
-            return render_to_response(
+            return render(
+                request,
                 'wm_extra/endpoint_added.html',
-                RequestContext(request, {
+                {
                     "endpoint": endpoint,
-                })
+                }
             )
         else:
             print 'Error posting an endpoint'
     else:
         endpoint_form = EndpointForm()
 
-    return render_to_response(
+    return render(
+        request,
         'wm_extra/endpoint_add.html',
-        RequestContext(request, {
+        {
             "form": endpoint_form,
-        })
+        }
     )
 
 
@@ -1055,8 +1017,8 @@ def layer_searchable_fields(
 
     template = 'wm_extra/layers/edit_searchable_fields.html'
 
-    return render_to_response(template, RequestContext(request, {
+    return render(request, template, {
         "layer": layer,
         "searchable_attributes": searchable_attributes,
         "status_message": status_message,
-    }))
+    })
